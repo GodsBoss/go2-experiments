@@ -6,6 +6,9 @@ test:
 		docker run --rm -it -v $${PWD}:/home/godev/project --workdir /home/godev/project/$${p} godsboss/go2go -brackets test;\
 	done
 
+test/%:
+	pkg=$(shell echo $@ | sed -e 's|^test/||'); docker run --rm -it -v $${PWD}:/home/godev/project --workdir /home/godev/project/$${pkg} godsboss/go2go -brackets test
+
 translate:
 	@# Only translate source files. Translating files needing something from other files does not seem to work.
 	docker run --rm -it -v ${PWD}:/home/godev/project --workdir /home/godev/project godsboss/go2go -brackets translate $$(find . -name '*.go2' -not -name '*_test.go2')
