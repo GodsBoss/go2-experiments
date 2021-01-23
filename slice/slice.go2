@@ -1,0 +1,9 @@
+package slice
+
+func Map[In any, Out any](list []In, f func(i In) Out) []Out {
+  result := make([]Out, len(list))
+  for i := range list {
+    result[i] = f(list[i])
+  }
+  return result
+}

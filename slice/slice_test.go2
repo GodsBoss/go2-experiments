@@ -1,0 +1,15 @@
+package slice
+
+import (
+	"strconv"
+	"strings"
+	"testing"
+)
+
+func TestMap(t *testing.T) {
+	r := strings.Join(Map([]int{2, 3, 5, 7}, strconv.Itoa), ", ")
+
+	if r != "2, 3, 5, 7" {
+		t.Errorf("got %s", r)
+	}
+}
