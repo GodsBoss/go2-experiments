@@ -1,0 +1,22 @@
+package gsort
+
+import (
+	"testing"
+)
+
+func TestSortSlice(t *testing.T) {
+	numbers := []int{5, 2, 8, 3, 9, 1}
+	SortSlice(
+		numbers,
+		func(left, right int) bool {
+			return left < right
+		},
+	)
+
+	if numbers[0] != 1 {
+		t.Errorf("numbers[0] is %d", numbers[0])
+	}
+	if numbers[5] != 9 {
+		t.Errorf("numbers[5] is %d", numbers[5])
+	}
+}

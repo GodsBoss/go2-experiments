@@ -1,0 +1,32 @@
+// Package gsort provides helpers for generic sorting.
+package gsort
+
+import (
+  "sort"
+)
+
+func SortSlice[T any](list []T, compare func(ti, tj T) bool) {
+  sort.Sort(
+    slice[T]{
+      contents: list,
+      cmp: compare,
+    },
+  )
+}
+
+type slice [T any]struct {
+	contents []T
+  cmp func (ti T, tj T) bool
+}
+
+func (s slice[T]) Len() int {
+	return len(s.contents)
+}
+
+func (s slice[T]) Less(i, j int) bool {
+  return s.cmp(s.contents[i], s.contents[j])
+}
+
+func (s slice[T]) Swap(i, j int) {
+	s.contents[i], s.contents[j] = s.contents[j], s.contents[i]
+}
