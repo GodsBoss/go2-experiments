@@ -74,8 +74,7 @@ func (repo *inMemoryRepository[ID, Model]) Save(model Model) (ID, error) {
 	}
 	err = repo.ider.SetID(model, id)
 	if err != nil {
-		var zeroID ID
-		return zeroID, err
+		return CreateZeroValue[ID](), err
 	}
 	repo.models[id] = model
 	return id, nil
@@ -104,8 +103,7 @@ func (repo *inMemoryRepository[ID, Model]) Delete(model Model) error {
 		return err
 	}
 	delete(repo.models, id)
-	var zeroID ID
-	err = repo.ider.SetID(model, zeroID)
+	err = repo.ider.SetID(model, CreateZeroValue[ID]())
 	if err != nil {
 		// Model's ID could not be deleted, so re-add model into the repository for consistency.
 		repo.models[id] = model
@@ -178,4 +176,16 @@ func IsModelAlreadyHasIDError[Model any, ID any](err error) (bool, Model, ID) {
 	var m Model
 	var id ID
 	return false, m, id
+}
+
+// IsZeroValue checks wether a value is the zero value.
+func IsZeroValue[T comparable](value T) bool {
+	var zero T
+	return value == zero
+}
+
+// CreateZeroValue returns the zero value of T.
+func CreateZeroValue[T any]() T {
+	var zero T
+	return zero
 }
