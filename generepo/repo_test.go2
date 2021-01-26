@@ -1,0 +1,180 @@
+package generepo
+
+import (
+	"testing"
+)
+
+func TestInMemoryRepositoryIsEmptyInitially(t *testing.T) {
+	repo := NewInMemoryRepository[int, *movie](&movieIDer{})
+
+	movies, err := repo.List()
+	if err != nil {
+		t.Errorf("could not list movies: %+v", err)
+	}
+	if len(movies) != 0 {
+		t.Errorf("expected no movies, got %+v", movies)
+	}
+}
+
+func TestCannotGetNonexistentModel(t *testing.T) {
+	ider := &movieIDer{}
+	repo := NewInMemoryRepository[int, *movie](ider)
+
+	id, err := ider.CreateID()
+	if err != nil {
+		t.Fatalf("expected no error generating ID, got %+v", err)
+	}
+	movie, err := repo.Get(id)
+	if movie != nil {
+		t.Errorf("expected no movie, got %+v", movie)
+	}
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	ok, errID := IsNotFoundError[int](err)
+	if !ok {
+		t.Errorf("expected error to be 'not found', got %+v", err)
+	}
+	if ok && errID != id {
+		t.Errorf("expected ID %d, got %d", id, errID)
+	}
+}
+
+func TestInMemoryRepositorySaveSuccessful(t *testing.T) {
+	repo := NewInMemoryRepository[int, *movie](&movieIDer{})
+
+	transformersMovie := &movie{
+		Title: "Transformers",
+		ReleaseDate: "June 12, 2007 ",
+	}
+	transformersID, err := repo.Save(transformersMovie)
+	if err != nil {
+		t.Fatalf("expected no error, got %+v", err)
+	}
+
+	movieFromRepo, err := repo.Get(transformersID)
+	if err != nil {
+		t.Fatalf("expected no error, got %+v", err)
+	}
+
+	if movieFromRepo.Title != "Transformers" {
+		t.Errorf("unexpected title %s", movieFromRepo.Title)
+	}
+	if movieFromRepo.ReleaseDate != "June 12, 2007 " {
+		t.Errorf("unexpected release data '%s'", movieFromRepo.ReleaseDate)
+	}
+}
+
+func TestCannotSaveAlreadySavedModel(t *testing.T) {
+	repo := NewInMemoryRepository[int, *movie](&movieIDer{})
+
+	transformersMovie := &movie{
+		Title: "Transformers",
+		ReleaseDate: "June 12, 2007 ",
+	}
+
+	_, err := repo.Save(transformersMovie)
+	if err != nil {
+		t.Fatalf("expected no error on first save, got %+v", err)
+	}
+	_, err = repo.Save(transformersMovie)
+	if err == nil {
+		t.Errorf("expected error on second save")
+	}
+}
+
+func TestNonSavedModel(t *testing.T) {
+	testcases := map[string]func(Repository[int, *movie], *movie) error{
+		"update": Repository[int, *movie].Update,
+		"delete": Repository[int, *movie].Delete,
+	}
+
+	for name, testcase := range testcases {
+		t.Run(
+			name,
+			func(t *testing.T) {
+				repo := NewInMemoryRepository[int, *movie](&movieIDer{})
+
+				transformersMovie := &movie{
+					Title: "Transformers",
+					ReleaseDate: "June 12, 2007 ",
+				}
+
+				err := testcase(repo, transformersMovie)
+				if err == nil {
+					t.Fatalf("expected error")
+				}
+				ok, errMovie := IsModelHasNoIDError[*movie](err)
+				if !ok {
+					t.Errorf("expected error to be 'model has no ID', got %+v", err)
+				}
+				if ok && errMovie == nil {
+					t.Fatalf("expected error to contain model")
+				}
+				if ok && (errMovie.Title != transformersMovie.Title || errMovie.ReleaseDate != transformersMovie.ReleaseDate) {
+					t.Errorf("unexpected movie %+v", errMovie)
+				}
+			},
+		)
+	}
+}
+
+func TestSuccessfulDelete(t *testing.T) {
+	repo := NewInMemoryRepository[int, *movie](&movieIDer{})
+
+	transformersMovie := &movie{
+		Title: "Transformers",
+		ReleaseDate: "June 12, 2007 ",
+	}
+
+	id, err := repo.Save(transformersMovie)
+	if err != nil {
+		t.Fatalf("could not save: %+v", err)
+	}
+	err = repo.Delete(transformersMovie)
+	if err != nil {
+		t.Fatalf("deletion failed: %+v", err)
+	}
+	if transformersMovie.ID != 0 {
+		t.Errorf("expected movie Id to be deleted, but is %d", transformersMovie.ID)
+	}
+
+	m, err := repo.Get(id)
+	if m != nil {
+		t.Errorf("expected no movie, got %+v", m)
+	}
+	if err == nil {
+		t.Errorf("expected error")
+	}
+}
+
+// movie is our model. It's ID type is int.
+type movie struct {
+	ID          int
+	Title       string
+	ReleaseDate string
+}
+
+type movieIDer struct {
+	lastUsedID int
+}
+
+func (ider *movieIDer) CreateID() (int, error) {
+	ider.lastUsedID++
+	return ider.lastUsedID, nil
+}
+
+func (ider *movieIDer) SetID(m *movie, id int) error {
+	if m.ID != 0 && id != 0 {
+		return NewModelAlreadyHasIDError(m, id)
+	}
+	m.ID = id
+	return nil
+}
+
+func (ider *movieIDer) GetID(m *movie) (int, error) {
+	if m.ID == 0 {
+		return 0, NewModelHasNoID[*movie](m)
+	}
+	return m.ID, nil
+}

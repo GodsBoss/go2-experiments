@@ -1,0 +1,181 @@
+package generepo
+
+import (
+	"fmt"
+)
+
+// Repository is a generic repository with a simple interface (probably too simple for production purposes).
+// All methods may fail due to infrastructure errors. Sometimes, additional error conditions hold, these are documented.
+type Repository[ID any, Model any] interface {
+	// Get returns the model identified by ID. Returns an error if no model with that ID exists.
+	Get(id ID) (Model, error)
+
+	// List returns all models.
+	List() ([]Model, error)
+
+	// Save stores the model as new. Returns an error if that model is already stored.
+	// Sets the model's ID, too.
+	Save(Model) (ID, error)
+
+	// Update updates the model. Returns an error if that model cannot be found.
+	Update(Model) error
+
+	// Delete removes the model. Returns an error if that model does not exist.
+	// Removes the model's ID, too.
+	Delete(Model) error
+}
+
+// IDer is a helper type for in-memory repositories. It abstracts creating IDs,
+// additionally setting and getting them.
+type IDer[ID any, Model any] interface {
+	// CreateID returns a fresh, unused ID. May return an error if generating one fails.
+	CreateID() (ID, error)
+
+	// SetID sets the ID on the model. It is an error to set a non-zero ID if the
+	// model has one. Setting a zero ID in this case is fine.
+	SetID(Model, ID) error
+
+	// GetID returns the ID of a model. Returns an error if model has no ID (yet).
+	GetID(Model) (ID, error)
+}
+
+type inMemoryRepository[ID comparable, Model any] struct {
+	ider IDer[ID, Model]
+	models map[ID]Model
+}
+
+func NewInMemoryRepository[ID comparable, Model any](ider IDer[ID, Model]) Repository[ID, Model] {
+	return &inMemoryRepository[ID, Model]{
+		ider: ider,
+		models: make(map[ID]Model),
+	}
+}
+
+func (repo *inMemoryRepository[ID, Model]) Get(id ID) (Model, error) {
+	model, ok := repo.models[id]
+	if !ok {
+		return model, NewNotFoundError[ID](id)
+	}
+	return model, nil
+}
+
+func (repo *inMemoryRepository[ID, Model]) List() ([]Model, error) {
+	models := make([]Model, 0, len(repo.models))
+	for id := range repo.models {
+		models = append(models, repo.models[id])
+	}
+	return models, nil
+}
+
+func (repo *inMemoryRepository[ID, Model]) Save(model Model) (ID, error) {
+	id, err := repo.ider.CreateID()
+	if err != nil {
+		return id, err
+	}
+	err = repo.ider.SetID(model, id)
+	if err != nil {
+		var zeroID ID
+		return zeroID, err
+	}
+	repo.models[id] = model
+	return id, nil
+}
+
+func (repo *inMemoryRepository[ID, Model]) Update(model Model) error {
+	id, err := repo.ider.GetID(model)
+	if err != nil {
+		return err
+	}
+	_, err = repo.Get(id)
+	if err != nil {
+		return err
+	}
+	repo.models[id] = model
+	return nil
+}
+
+func (repo *inMemoryRepository[ID, Model]) Delete(model Model) error {
+	id, err := repo.ider.GetID(model)
+	if err != nil {
+		return err
+	}
+	_, err = repo.Get(id)
+	if err != nil {
+		return err
+	}
+	delete(repo.models, id)
+	var zeroID ID
+	err = repo.ider.SetID(model, zeroID)
+	if err != nil {
+		// Model's ID could not be deleted, so re-add model into the repository for consistency.
+		repo.models[id] = model
+		return err
+	}
+	return nil
+}
+
+func NewNotFoundError[ID any](id ID) error {
+	return notFoundError[ID]{
+		id: id,
+	}
+}
+
+type notFoundError[ID any] struct {
+	id ID
+}
+
+func (e notFoundError[ID]) Error() string {
+	return fmt.Sprintf("could not find model with ID %+v", e.id)
+}
+
+func IsNotFoundError[ID any](err error) (bool, ID) {
+	typedErr, ok := err.(notFoundError[ID])
+	return ok, typedErr.id
+}
+
+func NewModelHasNoID[Model any](m Model) error {
+	return modelHasNoIDError[Model]{
+		m: m,
+	}
+}
+
+type modelHasNoIDError[Model any] struct {
+	m Model
+}
+
+func (err modelHasNoIDError[Model]) Error() string {
+	return "model has no ID"
+}
+
+func IsModelHasNoIDError[Model any](err error) (bool, Model) {
+	if specificErr, ok := err.(modelHasNoIDError[Model]); ok {
+		return true, specificErr.m
+	}
+	var m Model
+	return false, m
+}
+
+func NewModelAlreadyHasIDError[Model any, ID any](m Model, id ID) error {
+	return modelAlreadyHasIDError[Model, ID]{
+		m: m,
+		id: id,
+	}
+}
+
+type modelAlreadyHasIDError[Model any, ID any] struct {
+	m Model
+	id ID
+}
+
+func (err modelAlreadyHasIDError[Model, ID]) Error() string {
+	return "model already as ID"
+}
+
+func IsModelAlreadyHasIDError[Model any, ID any](err error) (bool, Model, ID) {
+	if specificErr, ok := err.(modelAlreadyHasIDError[Model, ID]); ok {
+		return true, specificErr.m, specificErr.id
+	}
+	var m Model
+	var id ID
+	return false, m, id
+}
